@@ -15,7 +15,7 @@
 #define BLOCK_PAYLOAD(b)	((void *)((char *)(b) + META_SIZE))
 #define PAYLOAD_BLOCK(p)	((struct block_meta *)((char *)(p) - META_SIZE))
 
-/* Head of the list of blocks living on the heap (ordered by address). */
+/* Список блоків, що розташовані в купі (впорядкований за адресою). */
 static struct block_meta *heap_head;
 static struct block_meta *heap_tail;
 
@@ -38,7 +38,7 @@ static void list_append(struct block_meta *block)
 	heap_tail = block;
 }
 
-/* Merge a free block with its successor (which must be free as well). */
+/* Зливає вільний блок із наступним (він теж має бути вільним). */
 static void merge_with_next(struct block_meta *block)
 {
 	struct block_meta *next = block->next;
@@ -51,7 +51,7 @@ static void merge_with_next(struct block_meta *block)
 		heap_tail = block;
 }
 
-/* Merge every run of adjacent free blocks. */
+/* Зливає всі послідовності сусідніх вільних блоків (коалесценція). */
 static void coalesce_all(void)
 {
 	struct block_meta *cur = heap_head;
@@ -65,7 +65,7 @@ static void coalesce_all(void)
 	}
 }
 
-/* Shrink `block` to `size` bytes, turning the rest into a free block. */
+/* Зменшує `block` до `size` байтів, а залишок перетворює на вільний блок. */
 static void split_block(struct block_meta *block, size_t size)
 {
 	struct block_meta *rest;
@@ -118,7 +118,7 @@ static void *heap_alloc(size_t size)
 {
 	struct block_meta *block, *new_block;
 
-	/* Heap preallocation: happens only once. */
+	/* Преалокація купи: виконується лише один раз. */
 	if (!heap_head) {
 		block = heap_grow(PREALLOC_SIZE);
 		block->size = PREALLOC_SIZE - META_SIZE;
@@ -135,7 +135,7 @@ static void *heap_alloc(size_t size)
 		return BLOCK_PAYLOAD(block);
 	}
 
-	/* Not enough room: expand the last block if free, else add a new one. */
+	/* Місця немає: розширюємо останній блок, якщо він вільний, інакше додаємо новий. */
 	if (heap_tail->status == STATUS_FREE) {
 		heap_grow(size - heap_tail->size);
 		heap_tail->size = size;
@@ -199,7 +199,7 @@ void *os_calloc(size_t nmemb, size_t size)
 	return ptr;
 }
 
-/* Allocate a new block, copy the payload over and release the old block. */
+/* Виділяє новий блок, копіює дані та звільняє старий блок. */
 static void *realloc_move(struct block_meta *block, size_t size)
 {
 	void *new_ptr = os_malloc(size);
@@ -232,13 +232,13 @@ void *os_realloc(void *ptr, size_t size)
 	if (block->status == STATUS_MAPPED || META_SIZE + size >= MMAP_THRESHOLD)
 		return realloc_move(block, size);
 
-	/* Shrink (or keep) in place. */
+	/* Зменшення (або той самий розмір) — на місці. */
 	if (size <= block->size) {
 		split_block(block, size);
 		return ptr;
 	}
 
-	/* Try to grow by absorbing the following free blocks, one at a time. */
+	/* Спроба збільшити блок, по черзі поглинаючи наступні вільні блоки. */
 	while (block->next && block->next->status == STATUS_FREE &&
 	       block->size < size)
 		merge_with_next(block);
@@ -248,7 +248,7 @@ void *os_realloc(void *ptr, size_t size)
 		return ptr;
 	}
 
-	/* Last block on the heap: just extend the heap. */
+	/* Останній блок у купі: просто збільшуємо купу. */
 	if (block == heap_tail) {
 		heap_grow(size - block->size);
 		block->size = size;
